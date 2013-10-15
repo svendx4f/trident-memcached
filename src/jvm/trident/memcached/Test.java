@@ -89,7 +89,7 @@ public class Test {
     	}
     }
     
-    public static StormTopology buildTopology(LocalDRPC drcp,  int memcachedPort) {
+    public static StormTopology buildTopology(LocalDRPC drpc,  int memcachedPort) {
     	
     	////////////////
     	// infinite source of words
@@ -123,7 +123,7 @@ public class Test {
                 .persistentAggregate(memcachedWords, new Count(), new Fields("count"))    
                 .parallelismHint(6);        
                 
-        topology.newDRPCStream("words", drcp)
+        topology.newDRPCStream("words", drpc)
                 .each(new Fields("args"), new Split(), new Fields("word"))
                 .groupBy(new Fields("word"))
                 .stateQuery(wordCounts, new Fields("word"), new MapGet(), new Fields("wordCount"))
@@ -145,14 +145,12 @@ public class Test {
         		.persistentAggregate(memcachedInitials, new Count(), new Fields("initCount"))         
         		.parallelismHint(6);
         
-        topology.newDRPCStream("1rstLetter", drcp)
+        topology.newDRPCStream("1rstLetter", drpc)
         		.each(new Fields("args"), new ParseCli(), new Fields("firstLetter", "length"))
         		.groupBy(new Fields("firstLetter", "length"))
                 .stateQuery(initialCounts, new Fields("firstLetter", "length"), new MapGet(), new Fields("initCount"))
                 .project(new Fields("firstLetter", "length", "initCount"))
                 ;
-        
-        
         
         return topology.build();
     }
@@ -172,7 +170,6 @@ public class Test {
         for(int i=0; i<100; i++) {
             System.out.println("DRPC: number of instances of 'cat', 'the', 'man' or 'four' counted so far: " + wordsDrpc.execute("words", "cat the man four"));
             System.out.println("DRPC: number of instances of 3-letter word starting with 't' or 6-letter word starting with 'a': " + wordsDrpc.execute("1rstLetter", "t 3, a 6"));
-            
             Utils.sleep(1000);
         }
         
