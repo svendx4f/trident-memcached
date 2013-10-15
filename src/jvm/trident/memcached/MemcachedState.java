@@ -79,7 +79,7 @@ public class MemcachedState<T> implements IBackingMap<T> {
     }
 
     public static StateFactory opaque(List<InetSocketAddress> servers, Options<OpaqueValue> opts) {
-    	return opaque(servers, opts);
+    	return new Factory(servers, StateType.OPAQUE, opts);
     }
 
     public static StateFactory transactional(List<InetSocketAddress> servers) {
