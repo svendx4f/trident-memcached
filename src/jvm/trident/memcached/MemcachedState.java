@@ -70,6 +70,8 @@ public class MemcachedState<T> implements IBackingMap<T> {
         public int hostConnectionLimit = 10;   // concurrent connections to one server.
         public int maxWaiters = 2;             // max waiters in the request queue.
         public int maxMultiGetBatchSize = 100;
+        
+        public IStateSingleKeyBuilder keyBuilder = new ConcatKeyBuilder("");
     }  
 
     public static StateFactory opaque(List<InetSocketAddress> servers) {
@@ -77,7 +79,7 @@ public class MemcachedState<T> implements IBackingMap<T> {
     }
 
     public static StateFactory opaque(List<InetSocketAddress> servers, Options<OpaqueValue> opts) {
-        return new Factory(servers, StateType.OPAQUE, opts);
+    	return opaque(servers, opts);
     }
 
     public static StateFactory transactional(List<InetSocketAddress> servers) {
@@ -125,7 +127,10 @@ public class MemcachedState<T> implements IBackingMap<T> {
                 throw new RuntimeException(e);
             }
             s.registerMetrics(conf, context);
-            CachedMap c = new CachedMap(s, _opts.localCacheSize);
+            // TODO: this is weird: this CachedMap seems to lose data with the keys grouped as in the example toplogy in test.java.
+            // uncommenting this line and commenting the next re-creates the issue
+//            IBackingMap c = new CachedMap(s, _opts.localCacheSize);
+            IBackingMap c = s;
             MapState ms;
             if(_type == StateType.NON_TRANSACTIONAL) {
                 ms = NonTransactionalMap.build(c);
@@ -199,11 +204,11 @@ public class MemcachedState<T> implements IBackingMap<T> {
     @Override
     public List<T> multiGet(List<List<Object>> keys) {
         try {
-            LinkedList<String> singleKeys = new LinkedList();
+            LinkedList<String> singleKeys = new LinkedList<>();
             for(List<Object> key: keys) {
-                singleKeys.add(toSingleKey(key));
+                singleKeys.add(_opts.keyBuilder.buildSingleKey(key));
             }
-            List<T> ret = new ArrayList(singleKeys.size());
+            List<T> ret = new ArrayList<T>(singleKeys.size());
             while(!singleKeys.isEmpty()) {
                 List<String> getBatch = new ArrayList<String>(_opts.maxMultiGetBatchSize);
                 for(int i=0; i<_opts.maxMultiGetBatchSize && !singleKeys.isEmpty(); i++) {
@@ -231,9 +236,9 @@ public class MemcachedState<T> implements IBackingMap<T> {
     @Override
     public void multiPut(List<List<Object>> keys, List<T> vals) {
         try {
-            List<Future> futures = new ArrayList(keys.size());
+            List<Future> futures = new ArrayList<>(keys.size());
             for(int i=0; i<keys.size(); i++) {
-                String key = toSingleKey(keys.get(i));
+            	String key = _opts.keyBuilder.buildSingleKey(keys.get(i));
                 T val = vals.get(i);
                 byte[] serialized = _ser.serialize(val);
                 final ChannelBuffer entry = ChannelBuffers.wrappedBuffer(serialized);
@@ -274,10 +279,4 @@ public class MemcachedState<T> implements IBackingMap<T> {
       _mexceptions = context.registerMetric("memcached/exceptionCount", new CountMetric(), bucketSize);
     }
 
-    private String toSingleKey(List<Object> key) {
-        if(key.size()!=1) {
-            throw new RuntimeException("Memcached state does not support compound keys");
-        }
-        return key.get(0).toString();
-    }
 }
